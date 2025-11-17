@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>非公式中部大学バス＋接続電車</title>
+  <style>
+    :root{
+      --main:#005bac;
+      --accent:#0078d7;
+      --bg:#f0f6ff;
+      --card:#fff;
+    }
+    *{box-sizing:border-box}
+    body{
+      font-family: "Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;
+      margin:0;
+      padding:16px;
+      background:var(--bg);
+      color:#222;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      min-height:100vh;
+    }
+    h1{
+      color:var(--main);
+      font-size:clamp(1.3rem,4vw,1.8rem);
+      margin:0 0 12px;
+      text-align:center;
+    }
+    .container{
+      width:100%;
+      max-width:720px;
+      background:var(--card);
+      border-radius:14px;
+      padding:18px;
+      box-shadow:0 6px 20px rgba(0,0,0,0.08);
+    }
+    .row{display:flex;gap:12px;align-items:center}
+    label{font-weight:700;margin-top:6px;display:block}
+    select, button{
+      width:100%;
+      padding:12px;
+      border-radius:10px;
+      border:1px solid #ccc;
+      font-size:1rem;
+    }
+    button{background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+    .info{
+      margin-top:12px;
+      padding:12px;border-radius:10px;background:#eef6ff;border-left:4px solid var(--accent);
+    }
+    .time-now{font-weight:700}
+    .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}
+    @media(min-width:720px){ .grid{grid-template-columns:1fr 1fr} }
+    .card{background:#fff;padding:12px;border-radius:10px;border:1px solid #eee}
+    
+    /* ★★★ UIスタイルをリスト形式に戻す ★★★ */
+    .bus-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:8px;border:1px solid #f0f0f0;margin-bottom:8px}
+    .bus-left{display:flex;flex-direction:column}
+    .bus-time{font-weight:800;color:var(--main);font-size:1.2rem}
+    .train-list .train-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #eee}
+    /* ★★★ UIスタイルここまで ★★★ */
+    
+    .badge{padding:6px 8px;border-radius:999px;font-weight:700;font-size:0.9rem}
+    .badge.busy{background:#ffecec;color:#b30000;border:1px solid #f2bcbc}
+    .badge.normal{background:#eef7ea;color:#0b7a1e;border:1px solid #d6eed7}
+    .small{font-size:0.85rem;color:#555}
+    .muted{color:#666;font-size:0.9rem}
+    .notice{margin-top:10px;color:#b00;font-weight:700}
+    .footer{margin-top:14px;text-align:center;color:#666;font-size:0.9rem}
+
+    /* --- スマホ用タブ --- */
+    .mobile-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    #direction-tabs { grid-template-columns: 1fr 1fr; }
+    #dayType-tabs { grid-template-columns: 1fr 1fr; }
+    
+    .tab-btn {
+      padding: 10px 8px;
+      font-size: 0.9rem;
+      text-align: center;
+      background: #f0f0f0;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .tab-btn.active {
+      background: var(--main);
+      color: #fff;
+      border-color: var(--main);
+    }
+    .desktop-select { display: none; }
+    .mobile-tabs { display: grid; }
+
+    @media (min-width: 720px) {
+      .desktop-select { display: block; }
+      .mobile-tabs { display: none; }
+    }
+    
+    /* --- 全時刻表テーブル --- */
+    .schedule-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+    .schedule-table th, .schedule-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .schedule-table th {
+      background-color: #f4f8ff;
+      width: 45px;
+      text-align: center;
+      font-weight: 800;
+      color: var(--main);
+      padding-top: 12px;
+    }
+    .schedule-table td {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      line-height: 1.6;
+    }
+    .minute-item {
+      font-weight: 600;
+      color: #111;
+    }
+    
+    /* ★ カウントダウン用のスタイル */
+    .remain-countdown, .train-remain-countdown {
+      color: #d9534f; /* 目立つ赤系 */
+      font-weight: 700;
+      font-size: 0.9rem; /* smallに合わせる */
+    }
+    
+  </style>
+</head>
+<body>
+  <h1>非公式中部大学バス時刻表</h1>
+
+  <div class="container" id="app">
+    
+    <label for="direction">方向</label>
+    <div class="mobile-tabs" id="direction-tabs">
+      <button class="tab-btn" data-value="uni_to_jinryo">大学 → 神領</button>
+      <button class="tab-btn" data-value="jinryo_to_uni">神領 → 大学</button>
+      <button class="tab-btn" data-value="uni_to_kozo">大学 → 高蔵寺</button>
+      <button class="tab-btn" data-value="kozo_to_uni">高蔵寺 → 大学</button>
+    </div>
+    <div class="desktop-select">
+      <select id="direction" aria-label="方向選択">
+        <option value="uni_to_jinryo">中部大学 → 神領駅</option>
+        <option value="jinryo_to_uni">神領駅北口 → 中部大学</option>
+        <option value="uni_to_kozo">中部大学 → 高蔵寺駅北口</option>
+        <option value="kozo_to_uni">高蔵寺駅北口 → 中部大学</option>
+      </select>
+    </div>
+
+    <label for="dayType">曜日</label>
+    <div class="mobile-tabs" id="dayType-tabs">
+      <button class="tab-btn" data-value="auto">自動</button>
+      <button class="tab-btn" data-value="weekday">平日</button>
+      <button class="tab-btn" data-value="saturday">土曜</button>
+      <button class="tab-btn" data-value="holiday">休日</button>
+    </div>
+    <div class="desktop-select">
+      <select id="dayType" aria-label="曜日選択">
+        <option value="auto">自動判定（平日/土曜/休日）</option>
+        <option value="weekday">平日</option>
+        <option value="saturday">土曜・休業中</option>
+        <option value="holiday">休日</option>
+      </select>
+    </div>
+
+    <div style="margin-top:12px;display:flex;gap:12px">
+      <button id="showAllBtn" type="button">全時刻表を表示</button>
+    </div>
+
+    <div class="info" style="margin-top:12px">
+      現在時刻: <span class="time-now" id="nowTime">--:--:--</span>
+      <div class="muted" id="congestionMsg" style="margin-top:8px"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3 style="margin:0 0 8px">次のバス（上位3本）</h3>
+        <div id="nextBuses">
+          <p class="small muted">読み込み中...</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 id="trainCardTitle" style="margin:0 0 8px">神領駅 → 名古屋方面（次の電車）</h3>
+        <div id="nextTrains">
+          <p class="small muted">中部大学 → 神領駅 を選ぶと接続電車を表示します</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="allSchedule" class="card" style="margin-top:12px;display:none">
+      <h3 style="margin:0 0 8px">全時刻表（選択中の曜日・方向）</h3>
+      <div id="allList" class="small"></div>
+    </div>
+  </div>
+
+  <script>
+/* ========= データ部 (変更なし) ========== */
+const schedules = {
+  routes: [
+    {
+      id: "jinryo_to_uni",
+      name: "神領駅北口 → 中部大学",
+      weekday: ["07:25","07:40","07:50","08:05","08:15","08:25","08:40","08:55","09:10","09:25","09:40","10:00","10:20","10:35","10:55","11:15","11:35","11:55","12:15","12:35","12:55","13:15","13:35","13:55","14:15","14:35","14:55","15:15","15:35","15:55","16:15","16:35","16:55","17:15","17:35","17:55","18:15","18:35","18:55","19:15","19:35","19:50"],
+      saturday: ["08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30","12:00","12:30","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30","17:00"],
+      holiday: ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]
+    },
+    {
+      id: "uni_to_jinryo",
+      name: "中部大学 → 神領駅北口",
+      weekday: ["08:05","08:15","08:25","08:35","08:45","08:55","09:05","09:25","09:45","10:05","10:25","10:45","11:05","11:25","11:45","12:05","12:25","12:45","13:05","13:25","13:45","14:05","14:25","14:45","15:05","15:25","15:45","16:05","16:25","16:45","17:05","17:25","17:45","18:05","18:25","18:45","19:05","19:25","19:45","19:55"],
+      saturday: ["08:15","08:45","09:15","09:45","10:15","10:45","11:15","11:45","12:15","12:45","13:15","13:45","14:15","14:45","15:15","15:45","16:15","16:45","17:15"],
+      holiday: ["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"]
+    },
+    {
+      id: "kozo_to_uni",
+      name: "高蔵寺駅北口 → 中部大学",
+      weekday: ["07:49", "08:10", "08:30", "08:56", "09:12", "10:00", "10:38", "11:38", "12:38", "13:38", "14:38", "15:07", "15:47", "16:43", "17:07", "17:40", "18:32", "19:31"],
+      saturday: ["08:10", "08:56", "09:38", "10:38", "11:38", "12:38", "13:38", "15:38", "16:38", "17:40", "18:34"],
+      holiday: []
+    },
+    {
+      id: "uni_to_kozo",
+      name: "中部大学 → 高蔵寺駅北口",
+      weekday: ["06:36", "06:57", "07:31", "08:18", "09:16", "09:42", "10:18", "11:09", "11:57", "12:57", "13:55", "14:55", "15:25", "16:08", "17:05", "17:26", "18:00", "18:51", "19:50"],
+      saturday: ["07:32", "08:27", "09:14", "09:55", "11:09", "11:57", "12:57", "13:55", "15:55", "16:55", "17:58", "18:51"],
+      holiday: []
+    }
+  ]
+};
+const trainSchedule = {
+  weekday: {
+    5: [55], 6: [0,10,20,30,38,47,55], 7: [4,12,17,21,29,35,40,47,51,59], 8: [5,9,19,23,37,49,54], 9: [4,19,25,33,41,56], 10:[3,21,28,41], 11:[11,21,31,38,51], 12:[11,21,31,38,51], 13:[11,21,31,38,51], 14:[11,21,31,38,50,57], 15:[5,14,22,31,37,42,55], 16:[4,17,24,37,42,57], 17:[4,19,24,29,36,43,58], 18:[6,19,25,36,42,59], 19:[6,19,24,37,42,59], 20:[6,19,25,37,45,59], 21:[9,19,36,45,54], 22:[4,14,20,35,46,56], 23:[6,16,25]
+  },
+  holiday: {
+    5:[55], 6:[0,10,20,30,39,49,56], 7:[5,12,20,33,48,54], 8:[6,22,35,49,54], 9:[4,19,25,33,41,56], 10:[3,21,28,41], 11:[11,21,31,38,51], 12:[11,21,31,38,51], 13:[11,21,31,38,51], 14:[11,21,31,38,50,57], 15:[5,14,22,31,37,42,55], 16:[4,17,24,37,42,57], 17:[4,19,24,29,36,43,58], 18:[6,19,25,36,42,59], 19:[6,19,24,37,42,59], 20:[6,19,25,37,45,59], 21:[9,19,36,45,54], 22:[4,14,20,35,46,56], 23:[6,16,25]
+  }
+};
+const kozoTrainSchedule = {
+  weekday: {
+    5: [47], 6: [42], 7: [17, 50], 8: [5, 32, 53], 9: [5, 49], 10: [19, 48], 11: [17, 50], 12: [17, 50], 13: [17, 50], 14: [17, 50], 15: [17, 48], 16: [17, 51], 17: [11, 33, 59], 18: [15, 33, 59], 19: [15, 33, 59], 20: [15, 33, 53], 21: [15, 33], 22: [4, 34], 23: [3, 33]
+  },
+  holiday: {
+    5: [47], 6: [42], 7: [17, 49], 8: [4, 29, 52], 9: [5, 49], 10: [19, 48], 11: [17, 50], 12: [17, 50], 13: [17, 50], 14: [17, 50], 15: [17, 48], 16: [17, 51], 17: [11, 33, 59], 18: [15, 33, 59], 19: [15, 33, 59], 20: [15, 33, 53], 21: [15, 33], 22: [4, 34], 23: [3, 33]
+  }
+};
+
+
+/* ======= ヘルパー関数 (変更なし) ======= */
+function pad(n){ return String(n).padStart(2,"0"); }
+function nowString(){ const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function nowHM(){ const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function toMinutes(hm){
+  const [h,m]=hm.split(":").map(Number); return h*60+m;
+}
+function nowTotalMinutes(){
+  const d=new Date(); return d.getHours()*60 + d.getMinutes();
+}
+function secondsUntil(hm){
+  const [h,m]=hm.split(":").map(Number);
+  const now=new Date();
+  const target=new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+  return Math.floor((target - now)/1000);
+}
+function findNextNBuses(routeId, dayType, n){
+  const route = schedules.routes.find(r=>r.id===routeId);
+  if(!route || !route[dayType]) return [];
+  const list = route[dayType];
+  const nowHMStr = nowHM();
+  const upcoming = list.filter(t=> t > nowHMStr ).slice(0,n);
+  return upcoming;
+}
+function findNextNTrains(scheduleData, dayType, n){
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const out = [];
+  if (!scheduleData || !scheduleData[dayType]) { return []; }
+  for(let hh=h; hh<=23 && out.length<n; hh++){
+    const arr = (scheduleData[dayType][hh] || []);
+    for(const mm of arr){
+      const tStr = `${pad(hh)}:${pad(mm)}`;
+      if(tStr > `${pad(h)}:${pad(m)}`){
+        out.push(tStr);
+        if(out.length>=n) break;
+      }
+    }
+  }
+  return out;
+}
+function isBusyPeriod(){
+  const total = nowTotalMinutes();
+  const b1s = 15*60 + 5;
+  const b1e = 15*60 + 30;
+  const b2s = 16*60 + 50;
+  const b2e = 17*60 + 20;
+  return (total >= b1s && total <= b1e) || (total >= b2s && total <= b2e);
+}
+function congestionText(){
+  return isBusyPeriod() ? "この時間帯は混みやすいです（混雑）" : "現在は混雑のピーク時間ではありません";
+}
+
+/* ======= DOM参照 (変更なし) ======= */
+const nowTimeEl = document.getElementById("nowTime");
+const congestionMsgEl = document.getElementById("congestionMsg");
+const nextBusesEl = document.getElementById("nextBuses");
+const nextTrainsEl = document.getElementById("nextTrains");
+const showAllBtn = document.getElementById("showAllBtn");
+const allScheduleEl = document.getElementById("allSchedule");
+const allListEl = document.getElementById("allList");
+const trainCardTitleEl = document.getElementById("trainCardTitle");
+const directionSelect = document.getElementById("direction");
+const dayTypeSelect = document.getElementById("dayType");
+
+
+/* ======= 表示ロジック (変更) ======= */
+let currentNextBuses = []; // array of HH:MM
+let currentNextTrains = [];
+let currentRouteId = "uni_to_jinryo";
+let currentDayType = "auto";
+
+// ★★★ 変更点: カウントダウンロジックを1件目のみ対象に修正 ★★★
+function updateClockAndCountdown(){
+  nowTimeEl.textContent = nowString();
+  congestionMsgEl.textContent = congestionText();
+  let needsBusRefresh = false;
+
+  // --- バス残り表示 (1件目のみ) ---
+  // ★ クラス名を .remain-countdown に変更 (querySelectorで単一取得)
+  const remainEl = nextBusesEl.querySelector(".remain-countdown"); 
+  if (remainEl && currentNextBuses.length > 0) { // 要素とデータがあるか確認
+    const time = currentNextBuses[0]; // 1件目の時刻
+    const sec = secondsUntil(time);
+    if(sec > 0){
+      const mm = Math.floor(sec/60);
+      const ss = sec % 60;
+      remainEl.textContent = `あと ${mm}分 ${pad(ss)}秒`;
+    } else {
+      remainEl.textContent = "出発済み";
+      needsBusRefresh = true; // 出発したらリフレッシュ
+    }
+  }
+  
+  // --- 電車残り表示 (1件目のみ) ---
+  // ★ クラス名を .train-remain-countdown に変更 (querySelectorで単一取得)
+  const trainRemainEl = nextTrainsEl.querySelector(".train-remain-countdown");
+  if (trainRemainEl && currentNextTrains.length > 0) { // 要素とデータがあるか確認
+    const time = currentNextTrains[0]; // 1件目の時刻
+    const sec = secondsUntil(time);
+    if(sec > 0){
+      const mm = Math.floor(sec/60);
+      const ss = sec % 60;
+      trainRemainEl.textContent = `あと ${mm}分 ${pad(ss)}秒`;
+    } else {
+      trainRemainEl.textContent = "発車済";
+    }
+  }
+  
+  // 最初の便が出発済みなら自動再取得
+  if(needsBusRefresh){
+    doSearch();
+  }
+}
+
+// ★★★ 変更点: バス描画をリスト形式に戻し、1件目だけカウントダウン要素を追加 ★★★
+function renderNextBuses(arr){
+  nextBusesEl.innerHTML = "";
+  if(arr.length===0){
+    nextBusesEl.innerHTML = `<p class="small muted">本日の運行はありません（または該当時刻なし）</p>`;
+    return;
+  }
+  // リストをループで描画
+  arr.forEach((t, idx)=>{
+    const busy = isBusyPeriod();
+    const badgeClass = busy ? "badge busy" : "badge normal";
+    const html = `
+      <div class="bus-item" aria-label="次のバス ${t}">
+        <div class="bus-left">
+          <div class="bus-time">${t}</div>
+          <div class="small">${idx===0 ? "次発" : (idx===1 ? "次々発" : "その次")}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="${badgeClass}">${busy ? "混雑" : "空き目安"}</div>
+          <div class="small" style="margin-top:8px; min-height: 1.2em;">
+            ${idx === 0 ? '<span class="remain-countdown">--</span>' : ''}
+          </div>
+        </div>
+      </div>
+    `;
+    nextBusesEl.insertAdjacentHTML("beforeend", html);
+  });
+}
+
+// ★★★ 変更点: 電車描画をリスト形式に戻し、1件目だけカウントダウン要素を追加 ★★★
+function renderNextTrains(arr){
+  nextTrainsEl.innerHTML = "";
+  if(arr.length===0){
+    nextTrainsEl.innerHTML = `<p class="small muted">該当する電車が見つかりません</p>`;
+    return;
+  }
+  // div.train-list を追加
+  nextTrainsEl.innerHTML = '<div class="train-list"></div>';
+  const container = nextTrainsEl.querySelector(".train-list");
+  
+  // リストをループで描画
+  arr.forEach((t, idx)=>{
+    const html = `
+      <div class="train-item">
+        <div>${idx+1}. ${t} 発</div>
+        <div class="small" style="min-height: 1.2em;">
+          ${idx === 0 ? '<span class="train-remain-countdown">--</span>' : ''}
+        </div>
+      </div>
+    `;
+    container.insertAdjacentHTML("beforeend", html);
+  });
+}
+
+// ★★★ 変更点: 全時刻表をテーブル形式で描画 (変更なし) ★★★
+function renderAllSchedule(routeId, dayType){
+  const route = schedules.routes.find(r=>r.id===routeId);
+  const container = allListEl; // 描画先のDOM
+
+  if(!route){ container.innerHTML = "データなし"; return; }
+  const list = route[dayType] || [];
+  
+  if(list.length===0){ 
+    container.innerHTML="<p class='small muted'>該当データなし（時刻が入力されていません）</p>"; 
+    return; 
+  }
+
+  // 1. 時刻を時間(H)ごとにグループ化
+  const grouped = {};
+  list.forEach(time => {
+    const [hour, minute] = time.split(':');
+    if (!grouped[hour]) {
+      grouped[hour] = [];
+    }
+    grouped[hour].push(minute);
+  });
+
+  // 2. HTMLテーブルを構築
+  let html = '<table class="schedule-table">';
+  html += '<tbody>';
+
+  const sortedHours = Object.keys(grouped).sort((a, b) => Number(a) - Number(b));
+
+  sortedHours.forEach(hour => {
+    const minutes = grouped[hour];
+    html += '<tr>';
+    html += `<th>${hour}</th>`; // 「時」のセル
+    html += '<td>'; // 「分」のセル
+    minutes.forEach(min => {
+      html += `<span class="minute-item">${min}</span>`;
+    });
+    html += '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+
+  // 3. 描画
+  container.innerHTML = html;
+}
+
+
+// ★★★ 変更点: doSearch を (バス3件, 電車7件) 取得用に変更 ★★★
+function doSearch(){
+  currentRouteId = directionSelect.value;
+  currentDayType = dayTypeSelect.value;
+  
+  let effectiveDayType = currentDayType;
+  if(effectiveDayType === "auto"){
+    const dow = new Date().getDay();
+    if(dow === 0) effectiveDayType = "holiday";
+    else if(dow === 6) effectiveDayType = "saturday";
+    else effectiveDayType = "weekday";
+  }
+  
+  // 1. バスの検索 (★ 1件 -> 3件)
+  currentNextBuses = findNextNBuses(currentRouteId, effectiveDayType, 3);
+  renderNextBuses(currentNextBuses);
+
+  // 2. 電車接続のロジックを分岐
+  const isJinryoRoute = (currentRouteId === 'uni_to_jinryo' || currentRouteId === 'jinryo_to_uni');
+  const isKozoRoute = (currentRouteId === 'uni_to_kozo' || currentRouteId === 'kozo_to_uni');
+
+  if (isJinryoRoute) {
+    trainCardTitleEl.textContent = "神領駅 → 名古屋方面（次の電車）";
+    if(currentRouteId === "uni_to_jinryo"){
+      const trainDay = (effectiveDayType === "weekday") ? "weekday" : "holiday";
+      // ★ 1件 -> 7件
+      currentNextTrains = findNextNTrains(trainSchedule, trainDay, 7); 
+      renderNextTrains(currentNextTrains);
+    } else {
+      currentNextTrains = [];
+      nextTrainsEl.innerHTML = `<p class="small muted">中部大学 → 神領駅 を選ぶと接続電車（神領発）を表示します</p>`;
+    }
+  } else if (isKozoRoute) {
+    trainCardTitleEl.textContent = "高蔵寺駅 → 中津川方面（次の電車）"; 
+    if (currentRouteId === "uni_to_kozo") {
+      const trainDay = (effectiveDayType === "weekday") ? "weekday" : "holiday";
+      // ★ 1件 -> 7件
+      currentNextTrains = findNextNTrains(kozoTrainSchedule, trainDay, 7); 
+      renderNextTrains(currentNextTrains);
+    } else {
+      currentNextTrains = [];
+      nextTrainsEl.innerHTML = `<p class="small muted">中部大学 → 高蔵寺駅 を選ぶと接続電車（高蔵寺発）を表示します</p>`;
+    }
+  }
+
+  // 3. 全時刻表の更新
+  if(allScheduleEl.style.display !== "none"){
+    renderAllSchedule(currentRouteId, effectiveDayType);
+  }
+
+  // 4. カウントダウンの即時更新
+  updateClockAndCountdown();
+  
+  // 5. タブの見た目をドロップダウンと同期
+  updateActiveTabs();
+}
+
+/* ======= スマホ用タブのJSロジック (変更なし) ======= */
+function updateActiveTabs() {
+  const currentDir = directionSelect.value;
+  const currentDay = dayTypeSelect.value;
+
+  document.querySelectorAll('#direction-tabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.value === currentDir);
+  });
+  document.querySelectorAll('#dayType-tabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.value === currentDay);
+  });
+}
+
+function setupTabListeners() {
+  document.querySelectorAll('#direction-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      directionSelect.value = btn.dataset.value;
+      directionSelect.dispatchEvent(new Event('change'));
+    });
+  });
+  document.querySelectorAll('#dayType-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dayTypeSelect.value = btn.dataset.value;
+      dayTypeSelect.dispatchEvent(new Event('change'));
+    });
+  });
+}
+
+
+/* ======= イベントリスナー (変更なし) ======= */
+showAllBtn.addEventListener("click", ()=>{
+  if(allScheduleEl.style.display === "none"){
+    allScheduleEl.style.display = "block";
+    let effectiveDayType = dayTypeSelect.value;
+    if(effectiveDayType === "auto"){
+      const dow = new Date().getDay();
+      if(dow === 0) effectiveDayType = "holiday";
+      else if(dow === 6) effectiveDayType = "saturday";
+      else effectiveDayType = "weekday";
+    }
+    renderAllSchedule(directionSelect.value, effectiveDayType);
+  } else {
+    allScheduleEl.style.display = "none";
+  }
+});
+
+directionSelect.addEventListener("change", doSearch);
+dayTypeSelect.addEventListener("change", doSearch);
+
+
+/* ======= 初期化 (変更なし) ======= */
+setInterval(updateClockAndCountdown, 1000);
+document.getElementById("nowTime").textContent = nowString();
+setupTabListeners(); 
+doSearch();
+
+  </script>
+</body>
+</html>
